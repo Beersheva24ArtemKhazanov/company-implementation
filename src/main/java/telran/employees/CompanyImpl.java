@@ -1,6 +1,9 @@
 package telran.employees;
 
 import java.util.Map.*;
+import java.io.BufferedReader;
+import java.io.FileReader;
+import java.io.PrintWriter;
 import java.util.ArrayList;
 import java.util.LinkedList;
 import java.util.HashMap;
@@ -9,7 +12,9 @@ import java.util.List;
 import java.util.NoSuchElementException;
 import java.util.TreeMap;
 
-public class CompanyImpl implements Company {
+import telran.io.Persistable;
+
+public class CompanyImpl implements Company,Persistable {
     private TreeMap<Long, Employee> employees = new TreeMap<>();
     private HashMap<String, List<Employee>> employeesDepartment = new HashMap<>();
     private TreeMap<Float, List<Manager>> managersFactor = new TreeMap<>();
@@ -114,6 +119,27 @@ public class CompanyImpl implements Company {
             managers = entry.getValue().stream().toArray(Manager[]::new);
         }
         return managers;
+    }
+
+    @Override
+    public void saveToFile(String fileName) {
+        try { PrintWriter writer = new PrintWriter(fileName);
+            forEach(writer::println);
+            writer.close();
+        } catch (Exception e) {
+            throw new RuntimeException();
+        }
+    }
+
+    @Override
+    public void restoreFromFile(String fileName) {
+        try {
+            BufferedReader reader = new BufferedReader(new FileReader(fileName));
+            reader.lines().forEach(obj -> addEmployee(Employee.getEmployeeFromJSON(obj)));
+            reader.close();
+        } catch (Exception e) {
+            throw new RuntimeException();
+        }
     }
 
 }
