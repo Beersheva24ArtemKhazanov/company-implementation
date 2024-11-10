@@ -135,7 +135,7 @@ public class CompanyImpl implements Company,Persistable {
     public void restoreFromFile(String fileName) {
         try {
             BufferedReader reader = new BufferedReader(new FileReader(fileName));
-            reader.lines().forEach(obj -> addEmployee(Employee.getEmployeeFromJSON(obj)));
+            reader.lines().forEach(line -> addEmployee(Employee.getEmployeeFromJSON(line)));
             reader.close();
         } catch (Exception e) {
             throw new RuntimeException();

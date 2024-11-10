@@ -7,6 +7,7 @@ public class Employee {
     private int basicSalary;
     private String department;
     public Employee() {};
+    @SuppressWarnings("unchecked")
     static public Employee getEmployeeFromJSON(String jsonStr) {
         JSONObject json = new JSONObject(jsonStr);
         String className = json.getString("className");
@@ -41,6 +42,10 @@ public class Employee {
 
     public String getDepartment() {
         return department;
+    }
+
+    public int getBasicSalary() {
+        return basicSalary;
     }
 
     @Override
