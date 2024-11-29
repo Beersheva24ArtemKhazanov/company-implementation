@@ -1,6 +1,7 @@
 package telran.employees;
 
 import java.util.Map.*;
+import java.util.concurrent.locks.*;
 import java.io.BufferedReader;
 import java.io.FileReader;
 import java.io.PrintWriter;
@@ -14,10 +15,13 @@ import java.util.TreeMap;
 
 import telran.io.Persistable;
 
-public class CompanyImpl implements Company,Persistable {
+public class CompanyImpl implements Company, Persistable {
     private TreeMap<Long, Employee> employees = new TreeMap<>();
     private HashMap<String, List<Employee>> employeesDepartment = new HashMap<>();
     private TreeMap<Float, List<Manager>> managersFactor = new TreeMap<>();
+    private static ReentrantReadWriteLock rwlock = new ReentrantReadWriteLock();
+    private static Lock readLock = rwlock.readLock();
+    private static Lock writeLock = rwlock.writeLock();
 
     private class EmployeeIterator implements Iterator<Employee> {
         private final Iterator<Employee> it = employees.values().iterator();
@@ -50,80 +54,121 @@ public class CompanyImpl implements Company,Persistable {
 
     @Override
     public void addEmployee(Employee empl) {
-        if (employees.containsKey(empl.getId())) {
-            throw new IllegalStateException();
-        }
-        employees.put(empl.getId(), empl);
-        employeesDepartment.computeIfAbsent(empl.getDepartment(), k -> new ArrayList<>()).add(empl);
-        if (empl instanceof Manager manager) {
-            managersFactor.computeIfAbsent(manager.getFactor(), k -> new LinkedList<>()).add(manager);
+        writeLock.lock();
+        try {
+            if (employees.containsKey(empl.getId())) {
+                throw new IllegalStateException();
+            }
+            employees.put(empl.getId(), empl);
+            employeesDepartment.computeIfAbsent(empl.getDepartment(), k -> new ArrayList<>()).add(empl);
+            if (empl instanceof Manager manager) {
+                managersFactor.computeIfAbsent(manager.getFactor(), k -> new LinkedList<>()).add(manager);
+            }
+        } finally {
+            writeLock.unlock();
         }
     }
 
     @Override
     public Employee getEmployee(long id) {
-        return employees.get(id);
+        readLock.lock();
+        try {
+            return employees.get(id);
+        } finally {
+            readLock.unlock();
+        }
     }
 
     @Override
     public Employee removeEmployee(long id) {
-        if (!employees.containsKey(id)) {
-            throw new NoSuchElementException();
+        writeLock.lock();
+        try {
+            if (!employees.containsKey(id)) {
+                throw new NoSuchElementException();
+            }
+            Employee removedEmployee = employees.remove(id);
+            removeFromDepartment(removedEmployee);
+            return removedEmployee;
+        } finally {
+            writeLock.unlock();
         }
-        Employee removedEmployee = employees.remove(id);
-        removeFromDepartment(removedEmployee);
-        return removedEmployee;
     }
 
     private void removeFromDepartment(Employee removedEmployee) {
-        String departmentOfRemovedEmployee = removedEmployee.getDepartment();
-        List<Employee> departmentWithEmployees = employeesDepartment.get(departmentOfRemovedEmployee);
-        departmentWithEmployees.remove(removedEmployee);
-        if (departmentWithEmployees.isEmpty()) {
-            employeesDepartment.remove(departmentOfRemovedEmployee);
-        }
-        if (removedEmployee instanceof Manager manager) {
-            removeFactor(manager);
+        writeLock.lock();
+        try {
+            String departmentOfRemovedEmployee = removedEmployee.getDepartment();
+            List<Employee> departmentWithEmployees = employeesDepartment.get(departmentOfRemovedEmployee);
+            departmentWithEmployees.remove(removedEmployee);
+            if (departmentWithEmployees.isEmpty()) {
+                employeesDepartment.remove(departmentOfRemovedEmployee);
+            }
+            if (removedEmployee instanceof Manager manager) {
+                removeFactor(manager);
+            }
+        } finally {
+            writeLock.unlock();
         }
     }
 
     private void removeFactor(Manager manager) {
-        Float factor = manager.getFactor();
-        List<Manager> managers = managersFactor.get(factor);
-        if (managers != null) {
-            managers.remove(manager);
+        writeLock.lock();
+        try {
+            Float factor = manager.getFactor();
+            List<Manager> managers = managersFactor.get(factor);
+            if (managers != null) {
+                managers.remove(manager);
+            }
+            managersFactor.remove(factor);
+        } finally {
+            writeLock.unlock();
         }
-        managersFactor.remove(factor);
     }
 
     @Override
     public int getDepartmentBudget(String department) {
-        int budget = 0;
-        List<Employee> employeesInDepartment = employeesDepartment.get(department);
-        if (employeesInDepartment != null) {
-            budget = employeesInDepartment.stream().mapToInt(Employee::computeSalary).sum();
+        readLock.lock();
+        try {
+            int budget = 0;
+            List<Employee> employeesInDepartment = employeesDepartment.get(department);
+            if (employeesInDepartment != null) {
+                budget = employeesInDepartment.stream().mapToInt(Employee::computeSalary).sum();
+            }
+            return budget;
+        } finally {
+            readLock.unlock();
         }
-        return budget;
     }
 
     @Override
     public String[] getDepartments() {
-        return employeesDepartment.keySet().stream().sorted().toArray(String[]::new);
+        readLock.lock();
+        try {
+            return employeesDepartment.keySet().stream().sorted().toArray(String[]::new);
+        } finally {
+            readLock.unlock();
+        }
     }
 
     @Override
     public Manager[] getManagersWithMostFactor() {
-        Manager[] managers = new Manager[0];
-        Entry<Float, List<Manager>> entry = managersFactor.lastEntry();
-        if (entry != null) {
-            managers = entry.getValue().stream().toArray(Manager[]::new);
+        readLock.lock();
+        try {
+            Manager[] managers = new Manager[0];
+            Entry<Float, List<Manager>> entry = managersFactor.lastEntry();
+            if (entry != null) {
+                managers = entry.getValue().stream().toArray(Manager[]::new);
+            }
+            return managers;
+        } finally {
+            readLock.unlock();
         }
-        return managers;
     }
 
     @Override
     public void saveToFile(String fileName) {
-        try { PrintWriter writer = new PrintWriter(fileName);
+        try {
+            PrintWriter writer = new PrintWriter(fileName);
             forEach(writer::println);
             writer.close();
         } catch (Exception e) {
