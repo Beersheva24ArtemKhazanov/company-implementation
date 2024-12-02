@@ -19,9 +19,9 @@ public class CompanyImpl implements Company, Persistable {
     private TreeMap<Long, Employee> employees = new TreeMap<>();
     private HashMap<String, List<Employee>> employeesDepartment = new HashMap<>();
     private TreeMap<Float, List<Manager>> managersFactor = new TreeMap<>();
-    private static ReentrantReadWriteLock rwlock = new ReentrantReadWriteLock();
-    private static Lock readLock = rwlock.readLock();
-    private static Lock writeLock = rwlock.writeLock();
+    private final ReentrantReadWriteLock rwlock = new ReentrantReadWriteLock();
+    private final Lock readLock = rwlock.readLock();
+    private final Lock writeLock = rwlock.writeLock();
 
     private class EmployeeIterator implements Iterator<Employee> {
         private final Iterator<Employee> it = employees.values().iterator();
@@ -95,34 +95,24 @@ public class CompanyImpl implements Company, Persistable {
     }
 
     private void removeFromDepartment(Employee removedEmployee) {
-        writeLock.lock();
-        try {
-            String departmentOfRemovedEmployee = removedEmployee.getDepartment();
-            List<Employee> departmentWithEmployees = employeesDepartment.get(departmentOfRemovedEmployee);
-            departmentWithEmployees.remove(removedEmployee);
-            if (departmentWithEmployees.isEmpty()) {
-                employeesDepartment.remove(departmentOfRemovedEmployee);
-            }
-            if (removedEmployee instanceof Manager manager) {
-                removeFactor(manager);
-            }
-        } finally {
-            writeLock.unlock();
+        String departmentOfRemovedEmployee = removedEmployee.getDepartment();
+        List<Employee> departmentWithEmployees = employeesDepartment.get(departmentOfRemovedEmployee);
+        departmentWithEmployees.remove(removedEmployee);
+        if (departmentWithEmployees.isEmpty()) {
+            employeesDepartment.remove(departmentOfRemovedEmployee);
+        }
+        if (removedEmployee instanceof Manager manager) {
+            removeFactor(manager);
         }
     }
 
     private void removeFactor(Manager manager) {
-        writeLock.lock();
-        try {
-            Float factor = manager.getFactor();
-            List<Manager> managers = managersFactor.get(factor);
-            if (managers != null) {
-                managers.remove(manager);
-            }
-            managersFactor.remove(factor);
-        } finally {
-            writeLock.unlock();
+        Float factor = manager.getFactor();
+        List<Manager> managers = managersFactor.get(factor);
+        if (managers != null) {
+            managers.remove(manager);
         }
+        managersFactor.remove(factor);
     }
 
     @Override
@@ -167,23 +157,29 @@ public class CompanyImpl implements Company, Persistable {
 
     @Override
     public void saveToFile(String fileName) {
+        readLock.lock();
         try {
             PrintWriter writer = new PrintWriter(fileName);
             forEach(writer::println);
             writer.close();
         } catch (Exception e) {
             throw new RuntimeException();
+        } finally {
+            readLock.unlock();
         }
     }
 
     @Override
     public void restoreFromFile(String fileName) {
+        readLock.lock();
         try {
             BufferedReader reader = new BufferedReader(new FileReader(fileName));
             reader.lines().forEach(line -> addEmployee(Employee.getEmployeeFromJSON(line)));
             reader.close();
         } catch (Exception e) {
             throw new RuntimeException();
+        }finally {
+            readLock.unlock();
         }
     }
 
