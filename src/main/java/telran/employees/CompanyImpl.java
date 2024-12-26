@@ -5,6 +5,9 @@ import java.util.concurrent.locks.*;
 import java.io.BufferedReader;
 import java.io.FileReader;
 import java.io.PrintWriter;
+import java.nio.file.Files;
+import java.nio.file.NoSuchFileException;
+import java.nio.file.Path;
 import java.util.ArrayList;
 import java.util.LinkedList;
 import java.util.HashMap;
@@ -19,9 +22,9 @@ public class CompanyImpl implements Company, Persistable {
     private TreeMap<Long, Employee> employees = new TreeMap<>();
     private HashMap<String, List<Employee>> employeesDepartment = new HashMap<>();
     private TreeMap<Float, List<Manager>> managersFactor = new TreeMap<>();
-    private final ReentrantReadWriteLock rwlock = new ReentrantReadWriteLock();
-    private final Lock readLock = rwlock.readLock();
-    private final Lock writeLock = rwlock.writeLock();
+    private ReadWriteLock rwlock = new ReentrantReadWriteLock();
+    private Lock readLock = rwlock.readLock();
+    private Lock writeLock = rwlock.writeLock();
 
     private class EmployeeIterator implements Iterator<Employee> {
         private final Iterator<Employee> it = employees.values().iterator();
@@ -157,7 +160,7 @@ public class CompanyImpl implements Company, Persistable {
 
     @Override
     public void saveToFile(String fileName) {
-        readLock.lock();
+        writeLock.lock();
         try {
             PrintWriter writer = new PrintWriter(fileName);
             forEach(writer::println);
@@ -165,21 +168,17 @@ public class CompanyImpl implements Company, Persistable {
         } catch (Exception e) {
             throw new RuntimeException();
         } finally {
-            readLock.unlock();
+            writeLock.unlock();
         }
     }
 
     @Override
     public void restoreFromFile(String fileName) {
-        readLock.lock();
-        try {
-            BufferedReader reader = new BufferedReader(new FileReader(fileName));
-            reader.lines().forEach(line -> addEmployee(Employee.getEmployeeFromJSON(line)));
-            reader.close();
+        try (BufferedReader reader = Files.newBufferedReader(Path.of(fileName))) {
+            reader.lines().map(Employee::getEmployeeFromJSON).forEach(this::addEmployee);
+        } catch (NoSuchFileException e) {
         } catch (Exception e) {
-            throw new RuntimeException();
-        }finally {
-            readLock.unlock();
+            throw new RuntimeException(e);
         }
     }
 
